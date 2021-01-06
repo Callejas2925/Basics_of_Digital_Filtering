@@ -7,31 +7,53 @@ Exploring Digital Filters
     3) A moving index is used to keep track of the current sample in the buffer
        and samples before the index are considered past samples.
 """
+import math
 import numpy as np
 from matplotlib import pyplot as plt
 
 
-def lpf(samples, wc):
-    taps = [0] * len(samples.tolist())
+def lpf_taps(samples, wc):
+    taps = [0] * len(samples)
     for i in range(len(samples)):
-        if i == int((len(samples.tolist()) / 2)):
-            taps[i] = wc / np.pi
+        if i == int(len(samples) / 2):
+            taps[i] = wc / math.pi
         else:
-            taps[i] = np.sin(wc * samples[i]) / (np.pi * samples[i])
+            taps[i] = math.sin(wc * samples[i]) / (math.pi * samples[i])
     return taps
 
 
-def fast_fourier_transform(function):
+def fft_db(function):
     fft = np.fft.fft(function)
     fft_shift = np.fft.fftshift(fft)
     fft_mag = np.abs(fft_shift)
-    return fft_mag
+
+    db_fft = []
+    for i in range(len(fft_mag)):
+        db_fft.append(10*math.log10(fft_mag[i]))
+    return db_fft
 
 
-def circular_convolution(input_signal, impulse_response_coefficients):
+def freq_taps(function, sample_freq):
+    taps = []
+    for i in range(len(function)):
+        taps.append((-sample_freq / 2) + (i * (sample_freq / len(function))))
+    return taps
+
+
+def circular_convolution(input_signal, impulse_response_coefficients, transient=True):
+    """
+
+    :param input_signal: Signal that will be flipped and shifted to perform convolution.
+    :param impulse_response_coefficients: Static Signal to perform convolution.
+    :param transient: Transient Response. Adds zeros to allow the circular buffer to flush properly.
+    :return: Convolution Result
+    """
     cir_buffer = [0] * len(impulse_response_coefficients)
     unfolded_buffer = [0] * len(impulse_response_coefficients)
     mac_buffer = []
+
+    if transient:
+        input_signal = input_signal + [0] * len(cir_buffer)
 
     cir_index = 0
     for i in range(len(input_signal)):
@@ -45,7 +67,6 @@ def circular_convolution(input_signal, impulse_response_coefficients):
             else:
                 unfolded_buffer[j] = cir_buffer[cir_index - j] * impulse_response_coefficients[j]
 
-        print(unfolded_buffer)
         mac_buffer.append(sum(unfolded_buffer))
 
         if cir_index >= len(cir_buffer) - 1:
@@ -55,12 +76,14 @@ def circular_convolution(input_signal, impulse_response_coefficients):
     return mac_buffer
 
 
-def rect(array, size=0.5):
-    return np.where(abs(array) <= size, 1, 0).tolist()
-
-
-def rect_window(size):
-    return np.ones(shape=size, dtype=int).tolist()
+def sample_taps(size, odd=True):
+    if odd:
+        if size % 2 == 0:
+            size += 1
+    taps = [0] * size
+    for i in range(size):
+        taps[i] = i - int(size / 2)
+    return taps
 
 
 def plot(x_axis, y_axis):
@@ -69,19 +92,19 @@ def plot(x_axis, y_axis):
 
 
 fs = 1000  # Sampling Freq
-fc = 100  # Cut-off Freq
-w = 2 * np.pi * (fc / fs)
+fc = 100   # Cut-off Freq
+w = 2 * math.pi * (fc / fs)
 
-t = np.linspace(start=-20, stop=20, num=41, dtype=int)
-f = np.linspace(start=0, stop=40, num=41, dtype=int)
-ilpf = lpf(samples=t, wc=w)
-fft_ilpf = fast_fourier_transform(ilpf)
+N = 40
+t = sample_taps(size=N)
+impulse = [0]*1001
+impulse[int(len(impulse)/2)] = 1
 
-points = np.linspace(start=-10, stop=10, num=201)
+ilpf = lpf_taps(samples=t, wc=w)
+con_ilpf = circular_convolution(input_signal=impulse, impulse_response_coefficients=ilpf)
+fft_ilpf = fft_db(con_ilpf)
 
-rect_function = rect(array=points)
-coeff = rect_window(size=10)
+f = freq_taps(function=fft_ilpf, sample_freq=fs)
 
-x = circular_convolution(input_signal=rect_function, impulse_response_coefficients=coeff)
-
-plot(x_axis=points, y_axis=x)
+plt.plot(f, fft_ilpf)
+plt.show()
